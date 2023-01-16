@@ -1,0 +1,64 @@
+name: Deploy PlatformIO package
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Upstream ref
+        required: false
+        default: ''
+      version:
+        description: Package version
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Deploy PlatformIO package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          repository: ambiot/amb1_sdk
+          ref: ${{ inputs.ref }}
+      - name: Generate version number
+        id: version
+        run: |
+          echo version=$(date -d $(git log -1 --format=%cs) +v%Y.%m.%d) >> $GITHUB_OUTPUT
+      - name: Write package.json
+        uses: jsdaniell/create-json@v1.2.2
+        env:
+          name: framework-realtek-amb1
+          version: ${{ inputs.version || steps.version.outputs.version }}
+          description: SDK for Ameba1
+        with:
+          name: package.json
+          json: ${{ toJSON(env) }}
+      - name: Cleanup repository
+        run: |
+          git checkout -B platformio
+          rm -rf component/soc/realtek/8195a/misc/bsp/lib/common/IAR/
+          rm -rf component/soc/realtek/8195a/misc/gcc_utility/tools/
+          rm -rf component/soc/realtek/8195a/misc/iar_utility/
+          rm -rf component/soc/realtek/8711b/misc/bsp/lib/common/IAR/
+          rm -rf component/soc/realtek/8711b/misc/iar_utility/
+          rm -rf doc/
+          rm -rf project/realtek_ameba1_va0_example/example_sources/i2s/
+          rm -rf project/realtek_amebaz_va0_example/example_sources/i2s/
+          rm -rf tools/
+      - name: Commit and push changes
+        env:
+          version: ${{ inputs.version || steps.version.outputs.version }}
+        run: |
+          git config --global user.email "gh-actions@libretuya.ml"
+          git config --global user.name "GitHub Actions"
+          git add .
+          git commit -m "[${{ env.version }}] Prepare PlatformIO package"
+          git tag ${{ env.version }}
+          git remote set-url origin https://github.com/${{ github.repository }}
+          git push --force origin platformio
+          git push origin ${{ env.version }}
